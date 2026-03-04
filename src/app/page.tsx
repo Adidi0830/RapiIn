@@ -2,7 +2,9 @@
 
 import Image from "next/image";
 import type { FormEvent, SVGProps } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import type { DashboardData } from "@/lib/backend/types";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -99,6 +101,78 @@ const ikonAksi = {
   kontraktor: IconVendor,
   laporan: IconKalkulasi,
   notifikasi: IconLonceng,
+};
+
+const defaultDashboardData: DashboardData = {
+  totalAnggaranAktif: 1240000,
+  terpakaiPersen: 58,
+  variansiPersen: -3.6,
+  estimasiSelesai: "8 - 16 Nov 2026",
+  keyakinanAi: 84,
+  analisis: [
+    "Harga baja melampaui benchmark sebesar 11,4%",
+    "Potensi penghematan konsolidasi vendor: $21.800",
+  ],
+  pemakaianKategori: {
+    struktur: 68,
+    mep: 52,
+    interior: 34,
+  },
+  tahapan: [
+    { nama: "Persiapan Lokasi", progres: 100, status: "Selesai" },
+    { nama: "Pekerjaan Struktur", progres: 74, status: "Lancar" },
+    { nama: "Instalasi MEP", progres: 48, status: "Perlu Tinjau" },
+  ],
+  antreanBerkas: [
+    {
+      id: "f1",
+      nama: "RAB-Revisi-Q1.xlsx",
+      tipe: "Spreadsheet",
+      ukuran: "1.2 MB",
+      dibuatPada: "2026-03-01T08:00:00.000Z",
+    },
+    {
+      id: "f2",
+      nama: "Penawaran-Vendor-Maret.pdf",
+      tipe: "PDF",
+      ukuran: "4.8 MB",
+      dibuatPada: "2026-03-02T08:00:00.000Z",
+    },
+    {
+      id: "f3",
+      nama: "Pengadaan.csv",
+      tipe: "CSV",
+      ukuran: "740 KB",
+      dibuatPada: "2026-03-03T08:00:00.000Z",
+    },
+  ],
+  rekomendasiVendor: [
+    {
+      nama: "Atlas Concrete Works",
+      skor: "92/100",
+      alasan: "Variansi biaya paling rendah untuk proyek struktur",
+    },
+    {
+      nama: "Nusa Interior Systems",
+      skor: "89/100",
+      alasan: "Kecepatan kerja baik dan catatan kepatuhan rapi",
+    },
+    {
+      nama: "Prime MEP Partners",
+      skor: "87/100",
+      alasan: "Paling sesuai dengan kebutuhan lingkup MEP saat ini",
+    },
+  ],
+};
+
+type LoginResponse = {
+  token: string;
+  user: {
+    id: string;
+    nama: string;
+    email: string;
+    role: "owner" | "manager";
+  };
 };
 
 function SplashScreen() {
@@ -228,20 +302,48 @@ function OnboardingScreen({
 function LoginDummy({
   onLogin,
 }: {
-  onLogin: (email: string) => void;
+  onLogin: (payload: LoginResponse) => Promise<void>;
 }) {
   const [email, setEmail] = useState("demo@rapiin.id");
   const [password, setPassword] = useState("123456");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setError("Email dan kata sandi wajib diisi.");
       return;
     }
+
     setError("");
-    onLogin(email);
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      if (!response.ok) {
+        const failed = (await response.json()) as { message?: string };
+        setError(failed.message ?? "Gagal login.");
+        return;
+      }
+
+      const data = (await response.json()) as LoginResponse;
+      await onLogin(data);
+    } catch {
+      setError("Server tidak bisa diakses.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -250,7 +352,7 @@ function LoginDummy({
         <p className="text-[10px] tracking-[0.28em] text-[#111111]">RAPIIN</p>
         <h1 className="mt-2 text-2xl font-semibold text-[#111111]">Masuk Akun</h1>
         <p className="mt-1 text-sm text-[--muted]">
-          Dummy login frontend dulu. Backend autentikasi nanti kita sambungkan.
+          Login sudah tersambung ke API backend lokal.
         </p>
 
         <div className="mt-4 overflow-hidden rounded-2xl border border-[#d4d4d4]">
@@ -289,9 +391,10 @@ function LoginDummy({
           {error ? <p className="text-xs text-[#111111]">{error}</p> : null}
           <button
             type="submit"
+            disabled={loading}
             className="w-full rounded-xl bg-linear-to-r from-[#111111] to-[#2a2a2a] py-2.5 text-sm font-medium text-white transition hover:opacity-90"
           >
-            Masuk ke RapiIn
+            {loading ? "Memproses..." : "Masuk ke RapiIn"}
           </button>
         </form>
 
@@ -303,36 +406,181 @@ function LoginDummy({
   );
 }
 
-function Dashboard({ nama }: { nama: string }) {
-  const tahapan = [
-    { nama: "Persiapan Lokasi", progres: 100, status: "Selesai" },
-    { nama: "Pekerjaan Struktur", progres: 74, status: "Lancar" },
-    { nama: "Instalasi MEP", progres: 48, status: "Perlu Tinjau" },
-  ];
+function Dashboard({
+  nama,
+  data,
+  token,
+  onLogout,
+}: {
+  nama: string;
+  data: DashboardData;
+  token: string;
+  onLogout: () => void;
+}) {
+  const [dashboard, setDashboard] = useState(data);
+  const [activeTab, setActiveTab] = useState<"beranda" | "proyek" | "budget" | "profil">(
+    "beranda",
+  );
+  const [toast, setToast] = useState("");
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [namaBerkas, setNamaBerkas] = useState("");
+  const [tipeBerkas, setTipeBerkas] = useState("PDF");
+  const [ukuranBerkas, setUkuranBerkas] = useState("");
 
-  const antreanBerkas = [
-    { nama: "RAB-Revisi-Q1.xlsx", tipe: "Spreadsheet", ukuran: "1.2 MB" },
-    { nama: "Penawaran-Vendor-Maret.pdf", tipe: "PDF", ukuran: "4.8 MB" },
-    { nama: "Pengadaan.csv", tipe: "CSV", ukuran: "740 KB" },
-  ];
+  const progresRef = useRef<HTMLElement | null>(null);
+  const estimasiRef = useRef<HTMLElement | null>(null);
+  const uploadRef = useRef<HTMLElement | null>(null);
+  const aiRef = useRef<HTMLElement | null>(null);
+  const budgetRef = useRef<HTMLElement | null>(null);
+  const vendorRef = useRef<HTMLElement | null>(null);
 
-  const rekomendasi = [
-    {
-      nama: "Atlas Concrete Works",
-      skor: "92/100",
-      alasan: "Variansi biaya paling rendah untuk proyek struktur",
-    },
-    {
-      nama: "Nusa Interior Systems",
-      skor: "89/100",
-      alasan: "Kecepatan kerja baik dan catatan kepatuhan rapi",
-    },
-    {
-      nama: "Prime MEP Partners",
-      skor: "87/100",
-      alasan: "Paling sesuai dengan kebutuhan lingkup MEP saat ini",
-    },
-  ];
+  useEffect(() => {
+    setDashboard(data);
+  }, [data]);
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+    const timer = window.setTimeout(() => setToast(""), 2500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  function pindahKeSection(
+    tab: "beranda" | "proyek" | "budget",
+    ref: { current: HTMLElement | null },
+  ) {
+    setActiveTab(tab);
+    window.setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+  }
+
+  async function submitTambahBerkas(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    if (!namaBerkas.trim() || !ukuranBerkas.trim()) {
+      setToast("Nama dan ukuran berkas wajib diisi.");
+      return;
+    }
+
+    if (!token) {
+      setToast("Token login tidak ditemukan.");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const response = await fetch("/api/berkas", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          nama: namaBerkas,
+          tipe: tipeBerkas,
+          ukuran: ukuranBerkas,
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        message?: string;
+        data?: DashboardData["antreanBerkas"][number];
+      };
+
+      if (!response.ok || !payload.data) {
+        setToast(payload.message ?? "Gagal tambah berkas.");
+        return;
+      }
+
+      setDashboard((prev) => ({
+        ...prev,
+        antreanBerkas: [payload.data!, ...prev.antreanBerkas],
+      }));
+      setNamaBerkas("");
+      setUkuranBerkas("");
+      setShowUploadForm(false);
+      setToast("Berkas berhasil ditambahkan.");
+    } catch {
+      setToast("Server tidak dapat dijangkau.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  function downloadLaporan() {
+    const isi = [
+      `Ringkasan RapiIn - ${new Date().toLocaleString("id-ID")}`,
+      "",
+      `Total Anggaran Aktif: $${dashboard.totalAnggaranAktif.toLocaleString("id-ID")}`,
+      `Terpakai: ${dashboard.terpakaiPersen}%`,
+      `Variansi: ${dashboard.variansiPersen}%`,
+      "",
+      "Tahapan Proyek:",
+      ...dashboard.tahapan.map(
+        (item) => `- ${item.nama}: ${item.progres}% (${item.status})`,
+      ),
+    ].join("\n");
+
+    const blob = new Blob([isi], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `laporan-rapiin-${Date.now()}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setToast("Laporan berhasil diunduh.");
+  }
+
+  function handleQuickAction(
+    key:
+      | "progres"
+      | "estimasi"
+      | "unggah"
+      | "ai"
+      | "anggaran"
+      | "kontraktor"
+      | "laporan"
+      | "notifikasi",
+  ) {
+    if (key === "progres") {
+      pindahKeSection("proyek", progresRef);
+      return;
+    }
+    if (key === "estimasi") {
+      pindahKeSection("proyek", estimasiRef);
+      return;
+    }
+    if (key === "unggah") {
+      setActiveTab("budget");
+      setShowUploadForm(true);
+      window.setTimeout(() => {
+        uploadRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
+      return;
+    }
+    if (key === "ai") {
+      pindahKeSection("budget", aiRef);
+      return;
+    }
+    if (key === "anggaran") {
+      pindahKeSection("budget", budgetRef);
+      return;
+    }
+    if (key === "kontraktor") {
+      pindahKeSection("proyek", vendorRef);
+      return;
+    }
+    if (key === "laporan") {
+      downloadLaporan();
+      return;
+    }
+
+    const perluTinjau = dashboard.tahapan.filter((item) => item.status !== "Selesai").length;
+    setToast(`Notifikasi aktif: ${perluTinjau} tahapan perlu dipantau.`);
+  }
 
   const aksiCepat = [
     { label: "Progres", key: "progres" as const },
@@ -345,8 +593,17 @@ function Dashboard({ nama }: { nama: string }) {
     { label: "Notifikasi", key: "notifikasi" as const },
   ];
 
+  const tampilProyek = activeTab === "beranda" || activeTab === "proyek";
+  const tampilBudget = activeTab === "beranda" || activeTab === "budget";
+  const tampilProfil = activeTab === "profil";
+
   return (
     <main className="relative min-h-screen pb-24 pt-4 md:pt-8">
+      {toast ? (
+        <div className="fixed inset-x-0 top-3 z-50 mx-auto w-fit rounded-full bg-[#111111] px-4 py-2 text-xs text-white">
+          {toast}
+        </div>
+      ) : null}
       <section className="mx-auto w-full max-w-md px-4">
         <header className="reveal rounded-[34px] bg-linear-to-br from-[#2a2a2a] via-[#171717] to-[#000000] p-5 text-white shadow-[0_18px_45px_rgba(0,0,0,0.35)]">
           <div className="flex items-start justify-between">
@@ -357,7 +614,18 @@ function Dashboard({ nama }: { nama: string }) {
                 Pantau proyek tanpa biaya bocor
               </p>
             </div>
-            <button className="rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs backdrop-blur">
+            <button
+              onClick={() => {
+                const prioritas = dashboard.tahapan.find((item) => item.progres < 100);
+                if (prioritas) {
+                  setToast(`Fokus sekarang: ${prioritas.nama}`);
+                  pindahKeSection("proyek", progresRef);
+                  return;
+                }
+                setToast("Semua tahapan sudah selesai.");
+              }}
+              className="rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs backdrop-blur"
+            >
               Langsung
             </button>
           </div>
@@ -375,13 +643,19 @@ function Dashboard({ nama }: { nama: string }) {
 
           <div className="mt-4 rounded-3xl border border-white/20 bg-white/10 p-4 backdrop-blur-md">
             <p className="text-xs text-white/80">Total Anggaran Aktif</p>
-            <p className="mt-1 text-3xl font-semibold">$1.240.000</p>
+            <p className="mt-1 text-3xl font-semibold">
+              $
+              {dashboard.totalAnggaranAktif.toLocaleString("id-ID")}
+            </p>
             <div className="mt-3 h-2 rounded-full bg-white/30">
-              <div className="h-2 w-[58%] rounded-full bg-white" />
+              <div
+                className="h-2 rounded-full bg-white"
+                style={{ width: `${dashboard.terpakaiPersen}%` }}
+              />
             </div>
             <div className="mt-3 flex items-center justify-between text-xs text-white/85">
-              <span>Terpakai 58%</span>
-              <span>Variansi -3,6%</span>
+              <span>Terpakai {dashboard.terpakaiPersen}%</span>
+              <span>Variansi {dashboard.variansiPersen.toLocaleString("id-ID")}%</span>
             </div>
           </div>
         </header>
@@ -393,6 +667,7 @@ function Dashboard({ nama }: { nama: string }) {
               return (
                 <button
                   key={aksi.label}
+                  onClick={() => handleQuickAction(aksi.key)}
                   className="group flex flex-col items-center gap-2 rounded-2xl p-2 transition hover:-translate-y-0.5 hover:bg-[#f1f1f1]"
                 >
                   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-[#f0f0f0] to-[#dddddd] transition group-hover:scale-105">
@@ -407,7 +682,12 @@ function Dashboard({ nama }: { nama: string }) {
           </div>
         </section>
 
-        <section className="reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow">
+        <section
+          ref={progresRef}
+          className={`reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow ${
+            tampilProyek ? "" : "hidden"
+          }`}
+        >
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-base font-semibold">
               <IconProgres className="h-4 w-4 stroke-[#111111]" />
@@ -418,7 +698,7 @@ function Dashboard({ nama }: { nama: string }) {
             </span>
           </div>
           <div className="mt-3 space-y-3">
-            {tahapan.map((item) => (
+            {dashboard.tahapan.map((item) => (
               <article key={item.nama} className="rounded-2xl bg-[--soft] p-3">
                 <div className="flex items-center justify-between text-xs">
                   <p className="font-medium">{item.nama}</p>
@@ -435,7 +715,12 @@ function Dashboard({ nama }: { nama: string }) {
           </div>
         </section>
 
-        <section className="reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow">
+        <section
+          ref={estimasiRef}
+          className={`reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow ${
+            tampilProyek ? "" : "hidden"
+          }`}
+        >
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <IconKalkulasi className="h-4 w-4 stroke-[#111111]" />
             Estimasi Selesai Proyek
@@ -443,16 +728,23 @@ function Dashboard({ nama }: { nama: string }) {
           <div className="mt-3 grid grid-cols-2 gap-3">
             <article className="rounded-2xl bg-[#f0f0f0] p-3">
               <p className="text-xs text-[--muted]">Rentang Tanggal</p>
-              <p className="mt-1 text-sm font-semibold">8 - 16 Nov 2026</p>
+              <p className="mt-1 text-sm font-semibold">{dashboard.estimasiSelesai}</p>
             </article>
             <article className="rounded-2xl bg-[#f0f0f0] p-3">
               <p className="text-xs text-[--muted]">Keyakinan AI</p>
-              <p className="mt-1 text-sm font-semibold text-[#111111]">84%</p>
+              <p className="mt-1 text-sm font-semibold text-[#111111]">
+                {dashboard.keyakinanAi}%
+              </p>
             </article>
           </div>
         </section>
 
-        <section className="reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow">
+        <section
+          ref={uploadRef}
+          className={`reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow ${
+            tampilBudget ? "" : "hidden"
+          }`}
+        >
           <div className="flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-base font-semibold">
               <IconUnggah className="h-4 w-4 stroke-[#111111]" />
@@ -469,13 +761,52 @@ function Dashboard({ nama }: { nama: string }) {
           <p className="mt-1 text-xs text-[--muted]">
             Mendukung XLSX, CSV, PDF, DOCX, dan foto kuitansi
           </p>
-          <button className="mt-3 w-full rounded-2xl border border-dashed border-[#bdbdbd] bg-[#f0f0f0] py-3 text-sm font-medium text-[#111111] transition hover:bg-[#e8e8e8]">
-            + Tambah Berkas
+          <button
+            onClick={() => setShowUploadForm((prev) => !prev)}
+            className="mt-3 w-full rounded-2xl border border-dashed border-[#bdbdbd] bg-[#f0f0f0] py-3 text-sm font-medium text-[#111111] transition hover:bg-[#e8e8e8]"
+          >
+            {showUploadForm ? "Tutup Form Berkas" : "+ Tambah Berkas"}
           </button>
+          {showUploadForm ? (
+            <form
+              onSubmit={submitTambahBerkas}
+              className="mt-3 space-y-2 rounded-2xl bg-[#f6f6f6] p-3"
+            >
+              <input
+                value={namaBerkas}
+                onChange={(e) => setNamaBerkas(e.target.value)}
+                placeholder="Nama berkas"
+                className="w-full rounded-xl border border-[#d4d4d4] bg-white px-3 py-2 text-sm outline-none ring-[#111111] focus:ring-2"
+              />
+              <select
+                value={tipeBerkas}
+                onChange={(e) => setTipeBerkas(e.target.value)}
+                className="w-full rounded-xl border border-[#d4d4d4] bg-white px-3 py-2 text-sm outline-none ring-[#111111] focus:ring-2"
+              >
+                <option value="PDF">PDF</option>
+                <option value="Spreadsheet">Spreadsheet</option>
+                <option value="CSV">CSV</option>
+                <option value="DOCX">DOCX</option>
+              </select>
+              <input
+                value={ukuranBerkas}
+                onChange={(e) => setUkuranBerkas(e.target.value)}
+                placeholder="Ukuran (contoh: 1.2 MB)"
+                className="w-full rounded-xl border border-[#d4d4d4] bg-white px-3 py-2 text-sm outline-none ring-[#111111] focus:ring-2"
+              />
+              <button
+                type="submit"
+                disabled={isUploading}
+                className="w-full rounded-xl bg-[#111111] py-2 text-sm font-medium text-white"
+              >
+                {isUploading ? "Menyimpan..." : "Simpan Berkas"}
+              </button>
+            </form>
+          ) : null}
           <div className="mt-3 space-y-2">
-            {antreanBerkas.map((berkas) => (
+            {dashboard.antreanBerkas.map((berkas) => (
               <article
-                key={berkas.nama}
+                key={berkas.id}
                 className="flex items-center justify-between rounded-xl bg-[#f3f3f3] p-3 text-xs"
               >
                 <div>
@@ -488,7 +819,12 @@ function Dashboard({ nama }: { nama: string }) {
           </div>
         </section>
 
-        <section className="reveal mt-4 overflow-hidden rounded-3xl bg-[--card] p-4 soft-shadow">
+        <section
+          ref={aiRef}
+          className={`reveal mt-4 overflow-hidden rounded-3xl bg-[--card] p-4 soft-shadow ${
+            tampilBudget ? "" : "hidden"
+          }`}
+        >
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-base font-semibold">
               <IconAI className="h-4 w-4 stroke-[#111111]" />
@@ -503,50 +839,63 @@ function Dashboard({ nama }: { nama: string }) {
             className="mb-3 h-24 w-full rounded-2xl object-cover"
           />
           <div className="space-y-2">
-            <article className="rounded-xl border border-[#d4d4d4] bg-[#f7f7f7] p-3">
-              <p className="text-xs font-semibold text-[#2a2a2a]">
-                Harga baja melampaui benchmark sebesar 11,4%
-              </p>
-            </article>
-            <article className="rounded-xl border border-[#d4d4d4] bg-[#f1f1f1] p-3">
-              <p className="text-xs font-semibold text-[#111111]">
-                Potensi penghematan konsolidasi vendor: $21.800
-              </p>
-            </article>
+            {dashboard.analisis.map((analisis, index) => (
+              <article
+                key={analisis}
+                className={`rounded-xl border border-[#d4d4d4] p-3 ${
+                  index === 0 ? "bg-[#f7f7f7]" : "bg-[#f1f1f1]"
+                }`}
+              >
+                <p className="text-xs font-semibold text-[#111111]">{analisis}</p>
+              </article>
+            ))}
           </div>
         </section>
 
-        <section className="reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow">
+        <section
+          ref={budgetRef}
+          className={`reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow ${
+            tampilBudget ? "" : "hidden"
+          }`}
+        >
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <IconUang className="h-4 w-4 stroke-[#111111]" />
             Monitoring Pemakaian Budget
           </h2>
           <div className="mt-3 h-2 rounded-full bg-[#dfdfdf]">
-            <div className="h-2 w-[58%] rounded-full bg-[#111111]" />
+            <div
+              className="h-2 rounded-full bg-[#111111]"
+              style={{ width: `${dashboard.terpakaiPersen}%` }}
+            />
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
             <article className="rounded-xl bg-[#f3f3f3] p-2">
               <p className="text-[--muted]">Struktur</p>
-              <p className="mt-1 font-semibold">68%</p>
+              <p className="mt-1 font-semibold">{dashboard.pemakaianKategori.struktur}%</p>
             </article>
             <article className="rounded-xl bg-[#f3f3f3] p-2">
               <p className="text-[--muted]">MEP</p>
-              <p className="mt-1 font-semibold">52%</p>
+              <p className="mt-1 font-semibold">{dashboard.pemakaianKategori.mep}%</p>
             </article>
             <article className="rounded-xl bg-[#f3f3f3] p-2">
               <p className="text-[--muted]">Interior</p>
-              <p className="mt-1 font-semibold">34%</p>
+              <p className="mt-1 font-semibold">{dashboard.pemakaianKategori.interior}%</p>
             </article>
           </div>
         </section>
 
-        <section className="reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow">
+        <section
+          ref={vendorRef}
+          className={`reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow ${
+            tampilProyek ? "" : "hidden"
+          }`}
+        >
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <IconVendor className="h-4 w-4 stroke-[#111111]" />
             Rekomendasi Kontraktor
           </h2>
           <div className="mt-3 space-y-2">
-            {rekomendasi.map((vendor) => (
+            {dashboard.rekomendasiVendor.map((vendor) => (
               <article key={vendor.nama} className="rounded-xl bg-[#f3f3f3] p-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium">{vendor.nama}</p>
@@ -560,24 +909,52 @@ function Dashboard({ nama }: { nama: string }) {
           </div>
         </section>
 
+        <section
+          className={`reveal mt-4 rounded-3xl bg-[--card] p-4 soft-shadow ${
+            tampilProfil ? "" : "hidden"
+          }`}
+        >
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <IconProfil className="h-4 w-4 stroke-[#111111]" />
+            Profil Pengguna
+          </h2>
+          <article className="mt-3 rounded-2xl bg-[#f3f3f3] p-4 text-sm">
+            <p className="font-semibold text-[#111111]">{nama}</p>
+            <p className="mt-1 text-[--muted]">Akun sudah terhubung ke backend API.</p>
+            <button
+              onClick={onLogout}
+              className="mt-4 rounded-xl bg-[#111111] px-4 py-2 text-xs font-medium text-white"
+            >
+              Keluar
+            </button>
+          </article>
+        </section>
+
         <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-md border-t border-[#d4d4d4] bg-white/92 px-6 py-3 backdrop-blur-xl">
           <ul className="grid grid-cols-4 gap-2 text-center text-[11px] text-[--muted]">
-            <li className="flex flex-col items-center gap-1 font-semibold text-[#111111]">
-              <IconRumah className="h-4 w-4 stroke-[#111111]" />
-              Beranda
-            </li>
-            <li className="flex flex-col items-center gap-1">
-              <IconProgres className="h-4 w-4 stroke-[#6b7280]" />
-              Proyek
-            </li>
-            <li className="flex flex-col items-center gap-1">
-              <IconUang className="h-4 w-4 stroke-[#6b7280]" />
-              Budget
-            </li>
-            <li className="flex flex-col items-center gap-1">
-              <IconProfil className="h-4 w-4 stroke-[#6b7280]" />
-              Profil
-            </li>
+            {[
+              { key: "beranda" as const, label: "Beranda", Icon: IconRumah },
+              { key: "proyek" as const, label: "Proyek", Icon: IconProgres },
+              { key: "budget" as const, label: "Budget", Icon: IconUang },
+              { key: "profil" as const, label: "Profil", Icon: IconProfil },
+            ].map((item) => {
+              const aktif = activeTab === item.key;
+              return (
+                <li key={item.key}>
+                  <button
+                    onClick={() => setActiveTab(item.key)}
+                    className={`flex w-full flex-col items-center gap-1 ${
+                      aktif ? "font-semibold text-[#111111]" : ""
+                    }`}
+                  >
+                    <item.Icon
+                      className={`h-4 w-4 ${aktif ? "stroke-[#111111]" : "stroke-[#6b7280]"}`}
+                    />
+                    {item.label}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </nav>
       </section>
@@ -603,6 +980,12 @@ export default function Home() {
     "splash" | "onboarding" | "login" | "dashboard"
   >("splash");
   const [namaUser, setNamaUser] = useState("Ariel");
+  const [dashboardData, setDashboardData] =
+    useState<DashboardData>(defaultDashboardData);
+  const [authToken, setAuthToken] = useState("");
+  const [statusDashboard, setStatusDashboard] = useState<
+    "idle" | "loading" | "error" | "ready"
+  >("idle");
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -622,14 +1005,62 @@ export default function Home() {
   if (fase === "login") {
     return (
       <LoginDummy
-        onLogin={(email) => {
-          const nama = email.split("@")[0] || "Pengguna";
-          setNamaUser(nama.charAt(0).toUpperCase() + nama.slice(1));
+        onLogin={async (auth) => {
+          setNamaUser(auth.user.nama);
+          setAuthToken(auth.token);
+          setStatusDashboard("loading");
+
+          try {
+            const response = await fetch("/api/dashboard", {
+              headers: {
+                authorization: `Bearer ${auth.token}`,
+              },
+            });
+            if (!response.ok) {
+              throw new Error("Gagal mengambil dashboard.");
+            }
+
+            const payload = (await response.json()) as {
+              data: DashboardData;
+            };
+
+            setDashboardData(payload.data);
+            setStatusDashboard("ready");
+          } catch {
+            setStatusDashboard("error");
+          }
+
           setFase("dashboard");
         }}
       />
     );
   }
 
-  return <Dashboard nama={namaUser} />;
+  if (fase === "dashboard" && statusDashboard === "loading") {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <p className="text-sm text-[--muted]">Memuat data dashboard...</p>
+      </main>
+    );
+  }
+
+  return (
+    <>
+      {statusDashboard === "error" ? (
+        <div className="fixed inset-x-0 top-3 z-40 mx-auto w-fit rounded-full bg-[#111111] px-4 py-2 text-xs text-white">
+          API dashboard gagal diakses. Menampilkan data fallback lokal.
+        </div>
+      ) : null}
+      <Dashboard
+        nama={namaUser}
+        data={dashboardData}
+        token={authToken}
+        onLogout={() => {
+          setAuthToken("");
+          setStatusDashboard("idle");
+          setFase("login");
+        }}
+      />
+    </>
+  );
 }

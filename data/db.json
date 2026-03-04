@@ -1,0 +1,91 @@
+{
+  "users": [
+    {
+      "id": "u_demo",
+      "email": "demo@rapiin.id",
+      "nama": "Ariel",
+      "passwordHash": "$2b$10$sAxkcxFTXf1/pJVEBnTczuWHJ06tJxdMsizk2pUzOSCwc2f0WKThS",
+      "role": "owner"
+    },
+    {
+      "id": "u_manager",
+      "email": "manager@rapiin.id",
+      "nama": "Nina",
+      "passwordHash": "$2b$10$sAxkcxFTXf1/pJVEBnTczuWHJ06tJxdMsizk2pUzOSCwc2f0WKThS",
+      "role": "manager"
+    }
+  ],
+  "dashboard": {
+    "totalAnggaranAktif": 1240000,
+    "terpakaiPersen": 58,
+    "variansiPersen": -3.6,
+    "estimasiSelesai": "8 - 16 Nov 2026",
+    "keyakinanAi": 84,
+    "analisis": [
+      "Harga baja melampaui benchmark sebesar 11,4%",
+      "Potensi penghematan konsolidasi vendor: $21.800"
+    ],
+    "pemakaianKategori": {
+      "struktur": 68,
+      "mep": 52,
+      "interior": 34
+    },
+    "tahapan": [
+      {
+        "nama": "Persiapan Lokasi",
+        "progres": 100,
+        "status": "Selesai"
+      },
+      {
+        "nama": "Pekerjaan Struktur",
+        "progres": 74,
+        "status": "Lancar"
+      },
+      {
+        "nama": "Instalasi MEP",
+        "progres": 48,
+        "status": "Perlu Tinjau"
+      }
+    ],
+    "antreanBerkas": [
+      {
+        "id": "f1",
+        "nama": "RAB-Revisi-Q1.xlsx",
+        "tipe": "Spreadsheet",
+        "ukuran": "1.2 MB",
+        "dibuatPada": "2026-03-01T08:00:00.000Z"
+      },
+      {
+        "id": "f2",
+        "nama": "Penawaran-Vendor-Maret.pdf",
+        "tipe": "PDF",
+        "ukuran": "4.8 MB",
+        "dibuatPada": "2026-03-02T08:00:00.000Z"
+      },
+      {
+        "id": "f3",
+        "nama": "Pengadaan.csv",
+        "tipe": "CSV",
+        "ukuran": "740 KB",
+        "dibuatPada": "2026-03-03T08:00:00.000Z"
+      }
+    ],
+    "rekomendasiVendor": [
+      {
+        "nama": "Atlas Concrete Works",
+        "skor": "92/100",
+        "alasan": "Variansi biaya paling rendah untuk proyek struktur"
+      },
+      {
+        "nama": "Nusa Interior Systems",
+        "skor": "89/100",
+        "alasan": "Kecepatan kerja baik dan catatan kepatuhan rapi"
+      },
+      {
+        "nama": "Prime MEP Partners",
+        "skor": "87/100",
+        "alasan": "Paling sesuai dengan kebutuhan lingkup MEP saat ini"
+      }
+    ]
+  }
+}
