@@ -747,7 +747,7 @@ function Dashboard({
           </p>
         </section>
 
-        <nav className="bottom-nav-safe fixed bottom-0 left-1/2 z-20 w-full max-w-[430px] -translate-x-1/2 border-t border-[#d4d4d4] bg-white/92 px-6 pt-3 backdrop-blur-xl">
+        <nav className="bottom-nav-safe fixed bottom-0 left-1/2 z-20 w-full app-max-width -translate-x-1/2 border-t border-[#d4d4d4] bg-white/92 px-6 pt-3 backdrop-blur-xl">
           <ul className="grid grid-cols-4 gap-2 text-center text-[11px]">
             <li>
               <button

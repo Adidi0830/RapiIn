@@ -52,6 +52,10 @@ body {
   padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
 }
 
+.app-max-width {
+  max-width: 430px;
+}
+
 .soft-shadow {
   box-shadow:
     0 10px 30px rgba(0, 0, 0, 0.08),
